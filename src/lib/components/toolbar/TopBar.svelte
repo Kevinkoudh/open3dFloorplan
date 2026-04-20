@@ -14,6 +14,7 @@
   import VersionHistoryPanel from './VersionHistoryPanel.svelte';
 
   let settingsOpen = $state(false);
+  let aiChatOpen = $state(false);
   let areaOpen = $state(false);
   let versionHistoryOpen = $state(false);
 
@@ -389,6 +390,16 @@
     aria-label="Area Summary"
   >
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>
+  </button>
+
+  <!-- AI Chat button -->
+  <button
+    onclick={() => aiChatOpen = !aiChatOpen}
+    class="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors"
+    title="AI Assistant"
+    aria-label="AI Assistant"
+  >
+    <img src="/ai-logo.png" alt="AI" width="20" height="20" />
   </button>
 
   <!-- Settings button -->
