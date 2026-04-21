@@ -1,17 +1,18 @@
 import { get } from 'svelte/store';
 import { currentProject } from '$lib/stores/project';
+import { GoogleGenAI } from '@google/genai';
 
-export async function askAI(userMessage: string): Promise<string> {
-  // Retrieve OpenAI API key from localStorage
-  const apiKey = localStorage.getItem('o3d_openai_key');
+export async function askAI(userMessage: string) {
+  // Retrieve Gemini API key from localStorage
+  const apiKey = localStorage.getItem('o3d_gemini_key');
   if (!apiKey) {
-    return 'Geen API key gevonden. Ga naar Settings → AI om je OpenAI key in te vullen.';
+    return 'No API key found. Please set your Gemini API key in the settings to use the AI assistant.';
   }
 
   // Retrieve current project data
   const project = get(currentProject);
   if (!project) {
-    return 'Geen project geopend.';
+    return 'No project loaded.';
   }
 
   // Create a summary of the project for the AI
@@ -25,38 +26,22 @@ export async function askAI(userMessage: string): Promise<string> {
     windows: floor?.windows.length ?? 0
   });
 
-  // 4. Send to OpenAI
+  // Gemini model
+  const ai = new GoogleGenAI({apiKey});
+  
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `Je bent een AI-assistent voor een plattegrond-editor. Je helpt gebruikers met het ontwerpen van appartementen. Dit is het huidige project: ${projectSummary}`
-          },
-          {
-            role: 'user',
-            content: userMessage
-          }
-        ],
-        max_tokens: 500
-      })
+    const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: `You're are an assistant for a 2D Floorplanner/3D model design tool. You are cabable of answering basic questions about the project.
+        If the user asks questions about their project, you will answer based on the ${projectSummary}. 
+        Always use the project data to answer, never make assumptions. If the question cannot be answered with the given data, say you don't know and explain why. 
+        Only answer the specific question, do not give any additional information that is not asked for. Here is the user's question: ${userMessage}`,
     });
-
-    const data = await response.json();
     
-    if (data.error) {
-      return `Fout: ${data.error.message}`;
-    }
-
-    return data.choices[0].message.content;
-  } catch (error: any) {
-    return `Verbindingsfout: ${error.message}`;
+    return response.text || 'AI assistent could not generate a response.';
+  }
+    catch (error) {
+    return "There was a mistake generating an response. Please try again later.";
   }
 }
+
