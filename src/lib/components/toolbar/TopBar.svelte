@@ -12,6 +12,7 @@
   import { saveState, lastSavedAt, manualSave, initAutoSave } from '$lib/stores/saveStatus';
   import { initVersionHistory, snapshotOnAction } from '$lib/stores/versionHistory';
   import VersionHistoryPanel from './VersionHistoryPanel.svelte';
+  import AiChat from '$lib/components/ai/AiChat.svelte';
 
   let settingsOpen = $state(false);
   let aiChatOpen = $state(false);
@@ -489,6 +490,7 @@
 </div>
 
 <SettingsDialog bind:open={settingsOpen} />
+<AiChat bind:open={aiChatOpen} />
 <VersionHistoryPanel bind:open={versionHistoryOpen} />
 
 {#if areaOpen}
