@@ -11,12 +11,13 @@
     if (!userInput.trim() || loading) return;
 
     const question = userInput;
+    const answer = await askAI(question);
     userInput = '';
     messages = [...messages, { role: 'user', text: question }];
     loading = true;
-
-    const answer = await askAI(question);
     messages = [...messages, { role: 'ai', text: answer }];
+    
+   
     loading = false;
   }
 
