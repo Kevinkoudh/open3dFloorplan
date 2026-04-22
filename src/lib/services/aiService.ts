@@ -25,7 +25,7 @@ export async function askAI(userMessage: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      "model": "llama3.1",
+      "model": "llama3.2",
       "messages": [{
       "role": "user",
       "content": `You're are an assistant for a 2D Floorplanner/3D model design tool. You are cabable of answering basic questions about the project.
