@@ -1,24 +1,31 @@
 <script lang="ts">
   import { askAI } from '$lib/services/aiService';
+  import { tick } from 'svelte';
   import { stopPropagation } from 'svelte/legacy';
 
   let { open = $bindable(false) }: { open: boolean } = $props();
   let userInput = $state('');
   let messages = $state<{ role: string; text: string }[]>([]);
   let loading = $state(false);
+  let chatContainer = $state<HTMLDivElement | null>(null);
 
   async function sendMessage() {
     if (!userInput.trim() || loading) return;
 
     const question = userInput;
-    const answer = await askAI(question);
+    loading = true;
     userInput = '';
     messages = [...messages, { role: 'user', text: question }];
-    loading = true;
+
+    await tick();
+    chatContainer?.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+
+    const answer = await askAI(question);
     messages = [...messages, { role: 'ai', text: answer }];
-    
-   
     loading = false;
+
+    await tick();
+    chatContainer?.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -42,7 +49,7 @@
   </div>
 
   <!-- Messages -->
-  <div class="flex-1 overflow-y-auto p-4 space-y-3">
+  <div class="flex-1 overflow-y-auto p-4 space-y-3" bind:this={chatContainer}>
     {#if messages.length === 0}
       <p class="text-sm text-gray-400 text-center mt-8">Stel een vraag over je plattegrond</p>
     {/if}
@@ -55,7 +62,7 @@
     {/each}
     {#if loading}
       <div class="flex justify-start">
-        <div class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 text-gray-500 animate-pulse">Denkt na...</div>
+        <div class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 text-gray-500 animate-pulse">Thinking...</div>
       </div>
     {/if}
   </div>
