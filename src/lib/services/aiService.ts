@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { currentProject } from '$lib/stores/project';
+import { currentProject, detectedRoomsStore } from '$lib/stores/project';
 import { addWall } from '$lib/stores/project';
 
 export async function askAI(userMessage: string) {
@@ -11,11 +11,13 @@ export async function askAI(userMessage: string) {
 
   // Create a summary of the project for the AI
   const floor = project.floors.find(f => f.id === project.activeFloorId);
-  const wantsAction = userMessage.toLowerCase().includes('wall') || userMessage.toLowerCase().includes('room');
+  const wantsAction = userMessage.toLowerCase().includes('add') ||
+                      userMessage.toLowerCase().includes('place') ||
+                      userMessage.toLowerCase().includes('create');
   const projectSummary = JSON.stringify({
     name: project.name,
     walls: floor?.walls.length ?? 0,
-    rooms: floor?.rooms.map(r => ({ name: r.name, area: r.area })) ?? [],
+    rooms: get(detectedRoomsStore).map(r => ({ name: r.name, area: r.area })) ?? [],
     furniture: floor?.furniture.map(f => f.catalogId) ?? [],
     doors: floor?.doors.length ?? 0,
     windows: floor?.windows.length ?? 0
@@ -30,7 +32,7 @@ export async function askAI(userMessage: string) {
       "model": "llama3.1",
       "messages": [{
       "role": "user",
-      "content": `You're are an assistant for a 2D Floorplanner/3D model design tool. You are cabable of answering basic questions about the project.
+      "content": `You're are an assistant for a 2D Floorplanner/3D model design tool. You are cabable of answering basic questions about the project and have the ability to place walls for now.
         If the user asks questions about their project, you will answer based on the ${projectSummary}.
         Always use the project data to answer, never make assumptions. If the question cannot be answered with the given data, say you don't know and explain why. 
         Only answer the specific question, do not give any additional information that is not asked for. Here is the user's question: ${userMessage}`
