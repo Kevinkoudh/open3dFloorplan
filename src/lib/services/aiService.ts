@@ -1,6 +1,5 @@
 import { get } from 'svelte/store';
-import { currentProject, detectedRoomsStore } from '$lib/stores/project';
-import { addWall } from '$lib/stores/project';
+import { currentProject, loadProject, detectedRoomsStore } from '$lib/stores/project';
 
 export async function askAI(userMessage: string) {
   // Retrieve current project data
@@ -9,92 +8,127 @@ export async function askAI(userMessage: string) {
     return 'No project loaded.';
   }
 
-  // Create a summary of the project for the AI
+  // Prepare data for AI
   const floor = project.floors.find(f => f.id === project.activeFloorId);
-  const wantsAction = userMessage.toLowerCase().includes('add') ||
-                      userMessage.toLowerCase().includes('place') ||
-                      userMessage.toLowerCase().includes('create');
-  const projectSummary = JSON.stringify({
-    name: project.name,
-    walls: floor?.walls.length ?? 0,
-    rooms: get(detectedRoomsStore).map(r => ({ name: r.name, area: r.area })) ?? [],
-    furniture: floor?.furniture.map(f => f.catalogId) ?? [],
-    doors: floor?.doors.length ?? 0,
-    windows: floor?.windows.length ?? 0
+  const wallsWithDescriptions = floor?.walls.map(w => {
+
+    // if y starts and ends are the same, it's horizontal, otherwise vertical
+    const isHorizontal = w.start.y === w.end.y;
+
+    // Calculate mid points for potential use in room description
+    return { ...w, isHorizontal, midX: (w.start.x + w.end.x) / 2, midY: (w.start.y + w.end.y) / 2 };
   });
 
-  // Llama model running locally
+  const detectedRooms = get(detectedRoomsStore);
+  const allRooms = detectedRooms.length > 0 ? detectedRooms : (floor?.rooms ?? []);
+
+  // For each room (r) in the list, do the following:
+  const roomDescriptions = allRooms.map(r => {
+
+    // Find the full wall objects for each wall ID in this room
+    const roomWalls = r.walls.map(wId => wallsWithDescriptions?.find(w => w.id === wId)).filter(Boolean);
+
+    // Keep only the horizontal walls (top and bottom)
+    const horizontalWalls = roomWalls.filter(w => w!.isHorizontal);
+    // Keep only the vertical walls (left and right)
+    const verticalWalls = roomWalls.filter(w => !w!.isHorizontal);
+
+    //create empty variables for wall position
+    let topWall = '';
+    let bottomWall = '';
+    let leftWall = '';
+    let rightWall = '';
+
+    // If there are at least 2 horizontal walls, sort them to find top and bottom
+    if (horizontalWalls.length >= 2) {
+      horizontalWalls.sort((a, b) => a!.midY - b!.midY);
+      topWall = horizontalWalls[0]!.id;
+      bottomWall = horizontalWalls[horizontalWalls.length - 1]!.id;
+    }
+
+    // If there are at least 2 vertical walls, sort them to find left and right
+    if (verticalWalls.length >= 2) {
+      verticalWalls.sort((a, b) => a!.midX - b!.midX);
+      leftWall = verticalWalls[0]!.id;
+      rightWall = verticalWalls[verticalWalls.length - 1]!.id;
+    }
+
+    // Return a simple object with room info and which wall is on which side
+    return { id: r.id, name: r.name, topWall, bottomWall, leftWall, rightWall };
+  });
+
+  // Convert rooms and doors to JSON text to send to the AI
+  const projectData = JSON.stringify({
+    rooms: roomDescriptions,
+    doors: floor?.doors
+  });
+
+  // Example structures so the AI knows the correct format and doens't make up the format
+  const structures = `
+  An example Door looks like: {"id": "door-1", "wallId": "id-of-wall", "position": 0.5, "width": 90, "height": 210, "type": "single", "swingDirection": "left", "flipSide": false}
+  An example Wall looks like: {"id": "wall-1", "start": {"x": 0, "y": 0}, "end": {"x": 500, "y": 0}, "thickness": 15, "height": 280, "color": "#444444"}
+  An example Room looks like: {"id": "room-1", "name": "Bedroom", "walls": ["wall-1", "wall-2"], "floorTexture": "hardwood", "area": 12}
+  `;
+
+  // Send the project data to AI running locally
   try { 
     const response = await fetch("http://localhost:11434/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    // Stringify for fetch
     body: JSON.stringify({
-      "model": "llama3.1",
+      "model": "qwen2.5-coder:7b",
       "messages": [{
       "role": "user",
-      "content": `You're are an assistant for a 2D Floorplanner/3D model design tool. You are cabable of answering basic questions about the project and have the ability to place walls for now.
-        If the user asks questions about their project, you will answer based on the ${projectSummary}.
-        Always use the project data to answer, never make assumptions. If the question cannot be answered with the given data, say you don't know and explain why. 
-        Only answer the specific question, do not give any additional information that is not asked for. Here is the user's question: ${userMessage}`
-        }],
+      "content": `You're are an assistant for a 2D Floorplanner/3D model design tool.
+      You will handle accoarding to the instructions based on ${userMessage} and the structure of objects: ${projectData}.
+      When making changes, always respond with the complete JSON object containing walls, rooms, and doors arrays. Never return only a partial update. 
+      Always check that the JSON structure is correct and if changes are needed, return the full updated JSON with all elements.
+      When adding doors or windows, never create new walls. Keep the walls and rooms arrays exactly as they are. Only modify the doors array.
+      When needed, edit the JSON based on the structure defined by: ${structures}.`
+}],
       "stream": false,
-      ...(wantsAction ? {"tools" : [
-          {
-            type: "function",
-            function: {
-            name: "addWall",
-            description: "Place a wall or create a room in the floorplan, with the correct start and ending points. Only use the addWall tool when the user explicitly asks to place a wall or create a room. For all other questions, respond with text",
-            parameters: {
-              type: "object",
-              required: ["start", "end"],
-              properties: {
-                start: { 
-                  type: "object",
-                  description: "The starting point of the wall",
-                  properties: {
-                    x: { type: "number" },
-                    y: { type: "number" }
-                  },
-                },
-                end: {
-                  type: "object",
-                  description: "The ending point of the wall",
-                  properties: {
-                    x: { type: "number" },
-                    y: { type: "number" }
-                }
-              }
-            }
-          }
-        }
-      }]} : {})
     })
   })
   
+    // Turning the string response into JSON
     const data = await response.json();
-  
-    if (data.message.tool_calls) {
-      const call = data.message.tool_calls[0];
-      const args = call.function.arguments;
+
+    // Getting text response from AI
+    const content = data.message.content;
+    console.log("AI Response:", content);
+
+    // Check if the response contains json, filtered with { and }
+    const jsonStart = content.indexOf('{');
+    const jsonEnd = content.lastIndexOf('}');
+
+    // if JSON is found in the response, extract it out
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      const jsonString = content.substring(jsonStart, jsonEnd + 1);
+
+      // Parse jsonString to object
+      const object = JSON.parse(jsonString)
       
-      if (call.function.name === "addWall") {
-        
-        if (typeof args.start?.x !== 'number' || typeof args.start?.y !== 'number' ||
-          typeof args.end?.x !== 'number' || typeof args.end?.y !== 'number') {
-          return "Could not place wall: the AI returned invalid coordinates.";
-        }
+      //copy the current project 
+      const updatedProject = { ...project };
+      // Find the active floor in the copy
+      const activeFloor = updatedProject.floors.find(f => f.id === updatedProject.activeFloorId);
 
-        addWall(args.start, args.end);
-        return `I've added a wall according to your request.`;
-      }
-        else {
-          return data.message.content ||  "I can only help with floorplan questions or instructions";
-        }
-      }
-
-    else {
-      return data.message.content || "Something went wrong generating an repsonse";
+      // Replace only the changed parts
+      if (activeFloor) {
+      if (object.walls) activeFloor.walls = object.walls;
+      if (object.rooms) activeFloor.rooms = object.rooms;
+      if (object.doors) activeFloor.doors = object.doors;
     }
+    
+    // Load the new updated project 
+    loadProject(updatedProject);
+
+      return "I've adjusted the floorplan accoarding to your input"
+    }
+
+    // If no JSON was found, return the AI's text response
+    return data.message.content || "Sorry, I couldn't generate a response at this time."
 
   }
     catch (error) {
