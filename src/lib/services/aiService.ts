@@ -10,6 +10,8 @@ export async function askAI(userMessage: string) {
 
   // Prepare data for AI
   const floor = project.floors.find(f => f.id === project.activeFloorId);
+
+  // Get all walls in active floor
   const wallsWithDescriptions = floor?.walls.map(w => {
 
     // if y starts and ends are the same, it's horizontal, otherwise vertical
@@ -25,7 +27,7 @@ export async function askAI(userMessage: string) {
   // For each room (r) in the list, do the following:
   const roomDescriptions = allRooms.map(r => {
 
-    // Find the full wall objects for each wall ID in this room
+    // Find the full wall details for each wall ID in this room by matching wall descriptions with ID in the array
     const roomWalls = r.walls.map(wId => wallsWithDescriptions?.find(w => w.id === wId)).filter(Boolean);
 
     // Keep only the horizontal walls (top and bottom)
@@ -57,10 +59,11 @@ export async function askAI(userMessage: string) {
     return { id: r.id, name: r.name, topWall, bottomWall, leftWall, rightWall };
   });
 
-  // Convert rooms and doors to JSON text to send to the AI
+  // Convert floorplan objects to JSON text to send to the AI
   const projectData = JSON.stringify({
     rooms: roomDescriptions,
-    doors: floor?.doors
+    doors: floor?.doors,
+    walls: floor?.walls
   });
 
   // Example structures so the AI knows the correct format and doens't make up the format
@@ -84,7 +87,8 @@ export async function askAI(userMessage: string) {
       You will handle accoarding to the instructions based on ${userMessage} and the structure of objects: ${projectData}.
       When making changes, always respond with the complete JSON object containing walls, rooms, and doors arrays. Never return only a partial update. 
       Always check that the JSON structure is correct and if changes are needed, return the full updated JSON with all elements.
-      When adding doors or windows, never create new walls. Keep the walls and rooms arrays exactly as they are. Only modify the doors array.
+      When adding or changing rooms, doors or walls, make sure to keep the structure of the JSON the same and only change the parts that are needed.
+      In this editor, 1 meter equals 100 units. So a 4 by 10 meter room needs walls of 400 and 1000 units. The first number is wifth (x) and the second number is length (y).
       When needed, edit the JSON based on the structure defined by: ${structures}.`
 }],
       "stream": false,
@@ -116,9 +120,8 @@ export async function askAI(userMessage: string) {
 
       // Replace only the changed parts
       if (activeFloor) {
-      if (object.walls) activeFloor.walls = object.walls;
-      if (object.rooms) activeFloor.rooms = object.rooms;
-      if (object.doors) activeFloor.doors = object.doors;
+      if (object.walls){activeFloor.walls = object.walls;}
+      if (object.doors){activeFloor.doors = object.doors;}
     }
     
     // Load the new updated project 
