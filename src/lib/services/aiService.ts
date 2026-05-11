@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { currentProject, loadProject, detectedRoomsStore } from '$lib/stores/project';
+import { buildRoomCopy } from '$lib/services/roomCopyService';
 
 export async function askAI(userMessage: string) {
   // Retrieve current project data
@@ -10,9 +11,33 @@ export async function askAI(userMessage: string) {
 
   // Prepare data for AI
   const floor = project.floors.find(f => f.id === project.activeFloorId);
+  if (!floor) {
+    return 'No active floor loaded.';
+  }
+
+  const detectedRooms = get(detectedRoomsStore);
+  const allRooms = detectedRooms.length > 0 ? detectedRooms : floor.rooms;
+  const isCopyIntent = /\b(copy|copies|duplicate|dupliceer|kopieer|kopie[eë]n?)\b/i.test(userMessage);
+
+  if (isCopyIntent) {
+    const copied = buildRoomCopy(userMessage, floor, allRooms);
+    if (!copied) {
+      return "Couldn't copy the room. Make sure the room exists and has valid walls.";
+    }
+
+    const updatedProject = { ...project };
+    const activeFloor = updatedProject.floors.find(f => f.id === updatedProject.activeFloorId);
+    if (!activeFloor) return 'No active floor loaded.';
+
+    activeFloor.walls = copied.walls;
+    activeFloor.doors = copied.doors;
+    activeFloor.rooms = copied.rooms;
+    loadProject(updatedProject);
+    return "I've adjusted the floorplan accoarding to your input";
+  }
 
   // Get all walls in active floor
-  const wallsWithDescriptions = floor?.walls.map(w => {
+  const wallsWithDescriptions = floor.walls.map(w => {
 
     // if y starts and ends are the same, it's horizontal, otherwise vertical
     const isHorizontal = w.start.y === w.end.y;
@@ -20,9 +45,6 @@ export async function askAI(userMessage: string) {
     // Calculate mid points for potential use in room description
     return { ...w, isHorizontal, midX: (w.start.x + w.end.x) / 2, midY: (w.start.y + w.end.y) / 2 };
   });
-
-  const detectedRooms = get(detectedRoomsStore);
-  const allRooms = detectedRooms.length > 0 ? detectedRooms : (floor?.rooms ?? []);
 
   // For each room (r) in the list, do the following:
   const roomDescriptions = allRooms.map(r => {
@@ -62,8 +84,8 @@ export async function askAI(userMessage: string) {
   // Convert floorplan objects to JSON text to send to the AI
   const projectData = JSON.stringify({
     rooms: roomDescriptions,
-    doors: floor?.doors,
-    walls: floor?.walls
+    doors: floor.doors,
+    walls: floor.walls
   });
 
   // Example structures so the AI knows the correct format and doens't make up the format
@@ -88,7 +110,7 @@ export async function askAI(userMessage: string) {
       When making changes, always respond with the complete JSON object containing walls, rooms, and doors arrays. Never return only a partial update. 
       Always check that the JSON structure is correct and if changes are needed, return the full updated JSON with all elements.
       When adding or changing rooms, doors or walls, make sure to keep the structure of the JSON the same and only change the parts that are needed.
-      In this editor, 1 meter equals 100 units. So a 4 by 10 meter room needs walls of 400 and 1000 units. The first number is wifth (x) and the second number is length (y).
+      In this editor, 1 meter equals 100 units. The first number is wifth (x) and the second number is length (y).
       When needed, edit the JSON based on the structure defined by: ${structures}.`
 }],
       "stream": false,
