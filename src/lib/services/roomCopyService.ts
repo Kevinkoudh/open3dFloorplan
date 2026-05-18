@@ -5,16 +5,26 @@ export function buildRoomCopy(
   floor: { walls: Wall[]; doors: Door[]; rooms: Room[] },
   allRooms: Room[]
 ): { walls: Wall[]; doors: Door[]; rooms: Room[] } | null {
+  const wallById = new Map(floor.walls.map(w => [w.id, w] as const));
+  const hasUsableWallLinks = (room: Room) =>
+    Array.isArray(room.walls) &&
+    room.walls.some(wallId => {
+      if (wallById.has(wallId)) return true;
+      const baseId = wallId.split('-copy-')[0];
+      return Boolean(baseId && wallById.has(baseId));
+    });
+
   
   // filter user message for lowercase
   const normalized = userMessage.toLowerCase();
   // A map that saves rooms based on their ID, starting with rooms from the floor, then the fallback rooms. Only if the ID is not already present in the map (to avoid duplicates).
   const mergedById = new Map<string, Room>();
   for (const r of floor.rooms) mergedById.set(r.id, r);
-  for (const r of allRooms) if (!mergedById.has(r.id)) mergedById.set(r.id, r);
+  // Prefer detected/allRooms snapshot when ids overlap; it is usually fresher than floor.rooms
+  for (const r of allRooms) mergedById.set(r.id, r);
 
   // Convert the map back to an array of rooms for easier processing.
-  const roomPool = Array.from(mergedById.values());
+  const roomPool = Array.from(mergedById.values()).filter(hasUsableWallLinks);
   if (roomPool.length === 0) return null;
 
 
@@ -60,9 +70,6 @@ export function buildRoomCopy(
 
   // copy count is determined by user message
   const copyCount = extractCopyCount(userMessage);
-
-  // create a map of walls by their ID for quick lookup
-  const wallById = new Map(floor.walls.map(w => [w.id, w] as const));
 
 
   // Collect wall IDs from source room

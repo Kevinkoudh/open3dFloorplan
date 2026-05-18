@@ -144,6 +144,7 @@ export async function askAI(userMessage: string) {
       if (activeFloor) {
       if (object.walls){activeFloor.walls = object.walls;}
       if (object.doors){activeFloor.doors = object.doors;}
+      if (object.rooms){activeFloor.rooms = object.rooms;}
     }
     
     // Load the new updated project 
