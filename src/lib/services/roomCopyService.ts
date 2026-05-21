@@ -74,9 +74,14 @@ export function executeActionPlan(project: any, actionPlan: any[]): boolean {
         const offsetX = startX - bounds.minX;
         const newWallIds: string[] = [];
 
+        const wallIdMap: Record<string, string> = {};
+
         originalWalls.forEach((ow: any) => {
           const nw = JSON.parse(JSON.stringify(ow));
           nw.id = generateId();
+
+          
+          wallIdMap[ow.id] = nw.id;
           
           nw.start.x = bounds.minX + ((ow.start.x - bounds.minX) * scaleX) + offsetX;
           nw.start.y = bounds.minY + ((ow.start.y - bounds.minY) * scaleY);
@@ -90,6 +95,28 @@ export function executeActionPlan(project: any, actionPlan: any[]): boolean {
           
           floor.walls.push(nw);
           newWallIds.push(nw.id);
+        });
+
+        // copy existing doors
+        if (!floor.doors) floor.doors = [];
+        const originalDoors = (floor.doors || []).filter((d: any) => originalWalls.some((ow: any) => ow.id === d.wallId));
+        
+        originalDoors.forEach((od: any) => {
+          const nd = JSON.parse(JSON.stringify(od));
+          nd.id = generateId();
+          nd.wallId = wallIdMap[od.wallId]; // replace old wall id with new wall id
+          floor.doors.push(nd);
+        });
+
+        // copy existing windows
+        if (!floor.windows) floor.windows = [];
+        const originalWindows = (floor.windows || []).filter((w: any) => originalWalls.some((ow: any) => ow.id === w.wallId));
+        
+        originalWindows.forEach((ow: any) => {
+          const nw = JSON.parse(JSON.stringify(ow));
+          nw.id = generateId();
+          nw.wallId = wallIdMap[ow.wallId]; // replace old wall id with new wall id
+          floor.windows.push(nw);
         });
 
         const newRoomName = `${originalRoom.name} (Kopie ${copyNumber})`;
